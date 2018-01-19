@@ -12,7 +12,7 @@
 # 
 # If you're using [FloydHub](https://www.floydhub.com/), set `data_dir` to "/input" and use the [FloydHub data ID](http://docs.floydhub.com/home/using_datasets/) "R5KrjnANiKVhLWAkpXhNBe".
 
-# In[1]:
+# In[2]:
 
 
 data_dir = './data'
@@ -34,7 +34,7 @@ helper.download_extract('celeba', data_dir)
 # ### MNIST
 # As you're aware, the [MNIST](http://yann.lecun.com/exdb/mnist/) dataset contains images of handwritten digits. You can view the first number of examples by changing `show_n_images`. 
 
-# In[2]:
+# In[3]:
 
 
 show_n_images = 25
@@ -54,7 +54,7 @@ pyplot.imshow(helper.images_square_grid(mnist_images, 'L'), cmap='gray')
 # ### CelebA
 # The [CelebFaces Attributes Dataset (CelebA)](http://mmlab.ie.cuhk.edu.hk/projects/CelebA.html) dataset contains over 200,000 celebrity images with annotations.  Since you're going to be generating faces, you won't need the annotations.  You can view the first number of examples by changing `show_n_images`.
 
-# In[3]:
+# In[4]:
 
 
 show_n_images = 25
@@ -82,7 +82,7 @@ pyplot.imshow(helper.images_square_grid(mnist_images, 'RGB'))
 # ### Check the Version of TensorFlow and Access to GPU
 # This will check to make sure you have the correct version of TensorFlow and access to a GPU
 
-# In[4]:
+# In[5]:
 
 
 import os
@@ -90,7 +90,7 @@ os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
 os.environ["CUDA_VISIBLE_DEVICES"]="2"
 
 
-# In[5]:
+# In[6]:
 
 
 """
@@ -119,7 +119,7 @@ else:
 # 
 # Return the placeholders in the following the tuple (tensor of real input images, tensor of z data)
 
-# In[6]:
+# In[7]:
 
 
 import problem_unittests as tests
@@ -149,7 +149,7 @@ tests.test_model_inputs(model_inputs)
 # ### Discriminator
 # Implement `discriminator` to create a discriminator neural network that discriminates on `images`.  This function should be able to reuse the variables in the neural network.  Use [`tf.variable_scope`](https://www.tensorflow.org/api_docs/python/tf/variable_scope) with a scope name of "discriminator" to allow the variables to be reused.  The function should return a tuple of (tensor output of the discriminator, tensor logits of the discriminator).
 
-# In[9]:
+# In[22]:
 
 
 def discriminator(images, reuse=False):
@@ -164,16 +164,20 @@ def discriminator(images, reuse=False):
     alpha = 0.2
     with tf.variable_scope('discriminator', reuse=reuse):
         # 28 28 3
-        x1 = tf.layers.conv2d(images, 64, 3, 2, 'same')
+        x1 = tf.layers.conv2d(images, 64, 3, 2, 'same',
+                              kernel_initializer=tf.contrib.layers.xavier_initializer())
         bn1 = tf.layers.batch_normalization(x1, training=True)
         leaky1 = tf.maximum(bn1, bn1 * alpha)
+        dropout1 = tf.layers.dropout(leaky1, name='dropout_1', training=True)
         # 14 14 64
-        x2 = tf.layers.conv2d(leaky1, 128, 3, 2, 'same')
+        x2 = tf.layers.conv2d(dropout1, 128, 3, 2, 'same',
+                             kernel_initializer=tf.contrib.layers.xavier_initializer())
         bn2 = tf.layers.batch_normalization(x2, training=True)
         leaky2 = tf.maximum(bn2, bn2 * alpha)
+        dropout2 = tf.layers.dropout(leaky2, name='dropout2', training=True)
         # 7 7 128
         
-        flat = tf.reshape(leaky2, (-1, 7 * 7 * 128))
+        flat = tf.reshape(dropout2, (-1, 7 * 7 * 128))
         logits = tf.layers.dense(flat, 1)
         out = tf.sigmoid(logits)
     return (out, logits)
@@ -188,7 +192,7 @@ tests.test_discriminator(discriminator, tf)
 # ### Generator
 # Implement `generator` to generate an image using `z`. This function should be able to reuse the variables in the neural network.  Use [`tf.variable_scope`](https://www.tensorflow.org/api_docs/python/tf/variable_scope) with a scope name of "generator" to allow the variables to be reused. The function should return the generated 28 x 28 x `out_channel_dim` images.
 
-# In[11]:
+# In[23]:
 
 
 def generator(z, out_channel_dim, is_train=True):
@@ -200,14 +204,23 @@ def generator(z, out_channel_dim, is_train=True):
     :return: The tensor output of the generator
     """
     # TODO: Implement Function
+    alpha = 0.2
     with tf.variable_scope('generator', reuse=not(is_train)):
         x1 = tf.layers.dense(z, 7*7*256)
         x1 = tf.reshape(x1, (-1, 7, 7, 256))
-        x1 = tf.layers.batch_normalization(x1, training=is_train)
-        x2 = tf.layers.conv2d_transpose(x1, 128, 3, 2, 'same')
+        
+        x1 = tf.layers.batch_normalization(x1, training=is_train) 
+        x1 = tf.maximum(x1, x1*alpha)
+        x1 = tf.layers.dropout(x1, training=is_train)
+        
+        x2 = tf.layers.conv2d_transpose(x1, 128, 3, 2, 'same',
+                                       kernel_initializer=tf.contrib.layers.xavier_initializer())
         # 14 14 256
         x2 = tf.layers.batch_normalization(x2, training=is_train)
-        x3 = tf.layers.conv2d_transpose(x2, out_channel_dim, 3, 2, 'same')
+        x2 = tf.maximum(x2, x2*alpha)
+        x2 = tf.layers.dropout(x2, training=is_train)
+        x3 = tf.layers.conv2d_transpose(x2, out_channel_dim, 3, 2, 'same',
+                                       kernel_initializer=tf.contrib.layers.xavier_initializer())
         # 28 28 out_channel_dim
         out = tf.tanh(x3)
     return out
@@ -224,7 +237,7 @@ tests.test_generator(generator, tf)
 # - `discriminator(images, reuse=False)`
 # - `generator(z, out_channel_dim, is_train=True)`
 
-# In[18]:
+# In[24]:
 
 
 def model_loss(input_real, input_z, out_channel_dim):
@@ -236,13 +249,14 @@ def model_loss(input_real, input_z, out_channel_dim):
     :return: A tuple of (discriminator loss, generator loss)
     """
     # TODO: Implement Function
+    smooth = 0.1
     input_fake = generator(input_z, out_channel_dim, is_train=True) # What is the training parameter should be?
     real_out, real_logits = discriminator(input_real, reuse=False)
     fake_out, fake_logits = discriminator(input_fake, reuse=True) # This line has some bugs of scope.
     fake_loss = tf.reduce_mean(
         tf.nn.sigmoid_cross_entropy_with_logits(logits=fake_logits, labels=tf.zeros_like(fake_logits)))
     real_loss = tf.reduce_mean(
-        tf.nn.sigmoid_cross_entropy_with_logits(logits=real_logits, labels=tf.ones_like(real_logits)))
+        tf.nn.sigmoid_cross_entropy_with_logits(logits=real_logits, labels=tf.ones_like(real_logits)*(1-smooth)))
     
     g_loss = tf.reduce_mean(
         tf.nn.sigmoid_cross_entropy_with_logits(logits=fake_logits, labels=tf.ones_like(fake_logits)))
@@ -260,7 +274,7 @@ tests.test_model_loss(model_loss)
 
 # ### Here we can try feature maching.
 
-# In[34]:
+# In[25]:
 
 
 def model_opt(d_loss, g_loss, learning_rate, beta1):
@@ -294,7 +308,7 @@ tests.test_model_opt(model_opt, tf)
 # ### Show Output
 # Use this function to show the current output of the generator during training. It will help you determine how well the GANs is training.
 
-# In[20]:
+# In[26]:
 
 
 """
@@ -332,13 +346,13 @@ def show_generator_output(sess, n_images, input_z, out_channel_dim, image_mode):
 # 
 # Use the `show_generator_output` to show `generator` output while you train. Running `show_generator_output` for every batch will drastically increase training time and increase the size of the notebook.  It's recommended to print the `generator` output every 100 batches.
 
-# In[51]:
+# In[27]:
 
 
 get_ipython().magic('pdb')
 
 
-# In[52]:
+# In[34]:
 
 
 def train(epoch_count, batch_size, z_dim, learning_rate, beta1, get_batches, data_shape, data_image_mode):
@@ -367,14 +381,19 @@ def train(epoch_count, batch_size, z_dim, learning_rate, beta1, get_batches, dat
         sess.run(tf.global_variables_initializer())
         for epoch_i in range(epoch_count):
             for batch_images in get_batches(batch_size):
+                batch_images = batch_images*2
                 # TODO: Train Model
                 step += 1
                 # sample random noise for G
                 batch_z = np.random.uniform(-1, 1, size=(batch_size, z_dim))
                 
-                # Run optimizers
+                # Run optimizers Run G twice to give it a chance to beat D.
                 _ = sess.run(d_opt, feed_dict={input_real: batch_images, input_z: batch_z, lr:learning_rate})
                 _ = sess.run(g_opt, feed_dict={input_z: batch_z, input_real:batch_images, lr:learning_rate})
+                _ = sess.run(d_opt, feed_dict={input_real: batch_images, input_z: batch_z, lr:learning_rate})
+                _ = sess.run(g_opt, feed_dict={input_z: batch_z, input_real:batch_images, lr:learning_rate})
+                _ = sess.run(g_opt, feed_dict={input_z: batch_z, input_real:batch_images, lr:learning_rate})
+                
                 
                 # Show the loss every 100 steps.
                 if step % 25 == 0:
@@ -382,19 +401,19 @@ def train(epoch_count, batch_size, z_dim, learning_rate, beta1, get_batches, dat
                           'D loss:', d_loss.eval({input_real: batch_images, input_z: batch_z, lr:learning_rate}),
                           'G loss:', g_loss.eval({input_z: batch_z, lr:learning_rate}))
                 if step % 400 == 0:
-                    show_generator_output(sess, 25, input_z, channels, data_image_mode)
+                    show_generator_output(sess, 9, input_z, channels, data_image_mode)
 
 
 # ### MNIST
 # Test your GANs architecture on MNIST.  After 2 epochs, the GANs should be able to generate images that look like handwritten digits.  Make sure the loss of the generator is lower than the loss of the discriminator or close to 0.
 
-# In[55]:
+# In[35]:
 
 
-batch_size = 32
+batch_size = 64
 z_dim = 100
 learning_rate = 0.001
-beta1 = 0.01
+beta1 = 0.5
 
 
 """
@@ -411,13 +430,13 @@ with tf.Graph().as_default():
 # ### CelebA
 # Run your GANs on CelebA.  It will take around 20 minutes on the average GPU to run one epoch.  You can run the whole epoch or stop when it starts to generate realistic faces.
 
-# In[58]:
+# In[36]:
 
 
 batch_size = 16
 z_dim = 100
 learning_rate = 0.0002
-beta1 = 0.01
+beta1 = 0.5
 
 
 """
